@@ -1,0 +1,31 @@
+/* Force purple background for the whole app */
+body, #root {
+  min-height: 100vh;
+  background-color: #130629; /* deep dark purple */
+  color: #ffffff; /* white text for contrast */
+  margin: 0;
+  font-family: sans-serif;
+}
+
+/* Style table nicely */
+table {
+  width: 100%;
+  max-width: 600px;
+  border-collapse: collapse;
+  margin-top: 1rem;
+}
+
+th, td {
+  padding: 12px;
+  border: 1px solid #7c3aed; /* purple border */
+  text-align: left;
+}
+
+thead {
+  background-color: #7c3aed; /* purple header */
+  color: #fff;
+}
+
+tbody tr:nth-child(even) {
+  background-color: #2a0e3a; /* darker row for contrast */
+}
