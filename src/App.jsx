@@ -94,7 +94,6 @@ async function getWalletVolume(address) {
     });
 
     const totalRaw = outRaw + inRaw;
-    // NOTE: this mirrors your previous behavior — returns a Number.
     const volumeNum = Number(totalRaw);
     return isFinite(volumeNum) ? volumeNum : 0;
   } catch (err) {
@@ -112,7 +111,7 @@ export default function App() {
   const [registering, setRegistering] = useState(false);
 
   const GAME_TX_AMOUNT = 5;
-  const OPTIMISTIC_TX_VALUE = 0.000001; // Ether per click
+  const OPTIMISTIC_TX_VALUE = 0.000001;
 
   function calculateScores(volumes) {
     const maxVolume = Math.max(...volumes, 0);
@@ -122,23 +121,18 @@ export default function App() {
     );
   }
 
-  // fetchLeaderboard now reads stored volumes from the on-chain contract
   async function fetchLeaderboard() {
     try {
       setLoading(true);
       const provider = new ethers.JsonRpcProvider(MONAD_RPC);
       const contract = new ethers.Contract(CONTRACT_ADDRESS, abi, provider);
-
-      // contract.getAll() returns (address[] users, uint256[] volumes)
       const res = await contract.getAll();
-      // res[0] = addresses array, res[1] = volumes array
       const addrs = res && res[0] ? res[0] : [];
       const volsRaw = res && res[1] ? res[1] : [];
 
       const list = addrs.map((addr, i) => {
         let vol = 0;
         try {
-          // volsRaw[i] may be a BigNumber; convert safely:
           if (volsRaw[i] && volsRaw[i].toString) {
             vol = Number(volsRaw[i].toString());
           } else {
@@ -150,7 +144,6 @@ export default function App() {
         return { address: addr, volume: vol };
       });
 
-      // compute scores client-side using same scaling as before
       const volumes = list.map((l) => l.volume);
       const scores = calculateScores(volumes);
 
@@ -189,6 +182,10 @@ export default function App() {
     await updateScore(addr, provider);
   }
 
+  function disconnectWallet() {
+    setAccount("");
+  }
+
   async function refreshScore() {
     if (!account || !window.ethereum) return;
     const provider = new ethers.BrowserProvider(window.ethereum);
@@ -223,8 +220,8 @@ export default function App() {
         await tx.wait();
       }
 
-      setEntries((prev) => {
-        return prev.map((e) => {
+      setEntries((prev) =>
+        prev.map((e) => {
           if (e.address === account) {
             const updatedVolume =
               e.volume.replace(/[^\d\.]/g, "") * 1 +
@@ -247,8 +244,8 @@ export default function App() {
             };
           }
           return e;
-        });
-      });
+        })
+      );
     } catch (err) {
       console.error("Break Monad failed:", err);
       alert("Failed to send transactions. Ensure enough balance on testnet.");
@@ -257,8 +254,6 @@ export default function App() {
     }
   }
 
-  // NEW: registerOnLeaderboard now computes the user's volume via Alchemy (existing function)
-  // then calls contract.register(volume) with the signed wallet (msg.sender enforced on-chain)
   async function registerOnLeaderboard() {
     if (!account || !window.ethereum) {
       alert("Connect your wallet first!");
@@ -267,20 +262,15 @@ export default function App() {
 
     setRegistering(true);
     try {
-      // compute user's volume locally (uses your existing Alchemy code)
       const volume = await getWalletVolume(account);
-      // use injected signer for writing on-chain
       const provider = new ethers.BrowserProvider(window.ethereum);
       const signer = await provider.getSigner();
       const contract = new ethers.Contract(CONTRACT_ADDRESS, abi, signer);
 
-      // pass volume as integer (uint256)
-      // convert to BigInt to be safe for ethers v6
       const volBigInt = BigInt(Math.floor(volume || 0));
       const tx = await contract.register(volBigInt);
       await tx.wait();
 
-      // refresh local UI
       await fetchLeaderboard();
       alert("Registration successful!");
     } catch (err) {
@@ -315,7 +305,7 @@ export default function App() {
           </p>
           <button
             onClick={playBreakMonad}
-            className="px-6 py-3 bg-purple-600 hover:bg-purple-500 rounded-lg font-semibold"
+            className="px-6 py-3 bg-purple-600 hover:bg-purple-400 rounded-lg font-semibold"
             disabled={gameSubmitting || !account}
           >
             {gameSubmitting ? "Sending Transactions…" : "Break Monad!"}
@@ -335,19 +325,28 @@ export default function App() {
             </div>
 
             <div className="flex gap-2">
-              <button
-                onClick={connectWallet}
-                className="px-4 py-2 rounded-lg bg-purple-600 hover:bg-purple-500 font-semibold disabled:opacity-50"
-                disabled={submitting}
-              >
-                {account ? "Reconnect" : "Connect Wallet"}
-              </button>
+              {!account ? (
+                <button
+                  onClick={connectWallet}
+                  className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 font-semibold disabled:opacity-50"
+                  disabled={submitting}
+                >
+                  Connect Wallet
+                </button>
+              ) : (
+                <button
+                  onClick={disconnectWallet}
+                  className="px-4 py-2 rounded-lg bg-red-600 hover:bg-red-500 font-semibold disabled:opacity-50"
+                >
+                  Disconnect
+                </button>
+              )}
 
               {account && (
                 <>
                   <button
                     onClick={refreshScore}
-                    className="px-4 py-2 rounded-lg bg-purple-500 hover:bg-purple-400 font-semibold disabled:opacity-50"
+                    className="px-4 py-2 rounded-lg bg-amber-600 hover:bg-amber-500 font-semibold disabled:opacity-50"
                     disabled={submitting}
                   >
                     Refresh Score
