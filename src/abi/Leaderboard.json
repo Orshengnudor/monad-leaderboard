@@ -1,34 +1,69 @@
 [
 	{
+		"inputs": [
+			{
+				"internalType": "uint256",
+				"name": "volume",
+				"type": "uint256"
+			}
+		],
+		"name": "register",
+		"outputs": [],
+		"stateMutability": "nonpayable",
+		"type": "function"
+	},
+	{
 		"anonymous": false,
 		"inputs": [
 			{
 				"indexed": true,
 				"internalType": "address",
-				"name": "player",
+				"name": "user",
 				"type": "address"
 			},
 			{
 				"indexed": false,
 				"internalType": "uint256",
-				"name": "newScore",
+				"name": "volume",
+				"type": "uint256"
+			},
+			{
+				"indexed": false,
+				"internalType": "uint256",
+				"name": "when",
 				"type": "uint256"
 			}
 		],
-		"name": "ScoreUpdated",
+		"name": "Registered",
 		"type": "event"
 	},
 	{
 		"inputs": [
 			{
+				"internalType": "address",
+				"name": "",
+				"type": "address"
+			}
+		],
+		"name": "entries",
+		"outputs": [
+			{
+				"internalType": "address",
+				"name": "user",
+				"type": "address"
+			},
+			{
 				"internalType": "uint256",
-				"name": "newScore",
+				"name": "volume",
+				"type": "uint256"
+			},
+			{
+				"internalType": "uint256",
+				"name": "registeredAt",
 				"type": "uint256"
 			}
 		],
-		"name": "updateScore",
-		"outputs": [],
-		"stateMutability": "nonpayable",
+		"stateMutability": "view",
 		"type": "function"
 	},
 	{
@@ -37,37 +72,13 @@
 		"outputs": [
 			{
 				"internalType": "address[]",
-				"name": "addrs",
+				"name": "",
 				"type": "address[]"
 			},
 			{
 				"internalType": "uint256[]",
-				"name": "scores",
+				"name": "",
 				"type": "uint256[]"
-			}
-		],
-		"stateMutability": "view",
-		"type": "function"
-	},
-	{
-		"inputs": [
-			{
-				"internalType": "uint256",
-				"name": "index",
-				"type": "uint256"
-			}
-		],
-		"name": "getPlayerAt",
-		"outputs": [
-			{
-				"internalType": "address",
-				"name": "addr",
-				"type": "address"
-			},
-			{
-				"internalType": "uint256",
-				"name": "score",
-				"type": "uint256"
 			}
 		],
 		"stateMutability": "view",
@@ -81,21 +92,18 @@
 				"type": "address"
 			}
 		],
-		"name": "getScore",
+		"name": "getEntry",
 		"outputs": [
+			{
+				"internalType": "address",
+				"name": "",
+				"type": "address"
+			},
 			{
 				"internalType": "uint256",
 				"name": "",
 				"type": "uint256"
-			}
-		],
-		"stateMutability": "view",
-		"type": "function"
-	},
-	{
-		"inputs": [],
-		"name": "totalPlayers",
-		"outputs": [
+			},
 			{
 				"internalType": "uint256",
 				"name": "",

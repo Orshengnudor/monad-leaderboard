@@ -94,6 +94,7 @@ async function getWalletVolume(address) {
     });
 
     const totalRaw = outRaw + inRaw;
+    // NOTE: this mirrors your previous behavior — returns a Number.
     const volumeNum = Number(totalRaw);
     return isFinite(volumeNum) ? volumeNum : 0;
   } catch (err) {
@@ -108,31 +109,48 @@ export default function App() {
   const [account, setAccount] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [gameSubmitting, setGameSubmitting] = useState(false);
+  const [registering, setRegistering] = useState(false);
 
   const GAME_TX_AMOUNT = 5;
   const OPTIMISTIC_TX_VALUE = 0.000001; // Ether per click
 
   function calculateScores(volumes) {
-    const maxVolume = Math.max(...volumes);
+    const maxVolume = Math.max(...volumes, 0);
+    if (maxVolume === 0) return volumes.map(() => 100);
     return volumes.map((v) =>
       Math.max(100, Math.floor((v / maxVolume) * 100000))
     );
   }
 
+  // fetchLeaderboard now reads stored volumes from the on-chain contract
   async function fetchLeaderboard() {
     try {
       setLoading(true);
       const provider = new ethers.JsonRpcProvider(MONAD_RPC);
       const contract = new ethers.Contract(CONTRACT_ADDRESS, abi, provider);
-      const [addrs] = await contract.getAll();
 
-      const list = await Promise.all(
-        addrs.map(async (a) => {
-          const vol = await getWalletVolume(a);
-          return { address: a, volume: vol };
-        })
-      );
+      // contract.getAll() returns (address[] users, uint256[] volumes)
+      const res = await contract.getAll();
+      // res[0] = addresses array, res[1] = volumes array
+      const addrs = res && res[0] ? res[0] : [];
+      const volsRaw = res && res[1] ? res[1] : [];
 
+      const list = addrs.map((addr, i) => {
+        let vol = 0;
+        try {
+          // volsRaw[i] may be a BigNumber; convert safely:
+          if (volsRaw[i] && volsRaw[i].toString) {
+            vol = Number(volsRaw[i].toString());
+          } else {
+            vol = Number(volsRaw[i] || 0);
+          }
+        } catch (e) {
+          vol = 0;
+        }
+        return { address: addr, volume: vol };
+      });
+
+      // compute scores client-side using same scaling as before
       const volumes = list.map((l) => l.volume);
       const scores = calculateScores(volumes);
 
@@ -197,7 +215,6 @@ export default function App() {
       const provider = new ethers.BrowserProvider(window.ethereum);
       const signer = await provider.getSigner();
 
-      // Send transactions
       for (let i = 0; i < GAME_TX_AMOUNT; i++) {
         const tx = await signer.sendTransaction({
           to: account,
@@ -206,26 +223,71 @@ export default function App() {
         await tx.wait();
       }
 
-      // Optimistic Update: immediately increase user's volume in UI
       setEntries((prev) => {
         return prev.map((e) => {
           if (e.address === account) {
-            const updatedVolume = e.volume.replace(/[^\d\.]/g, "") * 1 + GAME_TX_AMOUNT * OPTIMISTIC_TX_VALUE;
+            const updatedVolume =
+              e.volume.replace(/[^\d\.]/g, "") * 1 +
+              GAME_TX_AMOUNT * OPTIMISTIC_TX_VALUE;
             return {
               ...e,
               volume: formatVolumeHuman(updatedVolume),
-              score: Math.max(100, Math.floor((updatedVolume / Math.max(...prev.map(p => parseFloat(p.volume.replace(/[^\d\.]/g,""))))) * 100000))
+              score: Math.max(
+                100,
+                Math.floor(
+                  (updatedVolume /
+                    Math.max(
+                      ...prev.map((p) =>
+                        parseFloat(p.volume.replace(/[^\d\.]/g, ""))
+                      )
+                    )) *
+                    100000
+                )
+              ),
             };
           }
           return e;
         });
       });
-
     } catch (err) {
       console.error("Break Monad failed:", err);
       alert("Failed to send transactions. Ensure enough balance on testnet.");
     } finally {
       setGameSubmitting(false);
+    }
+  }
+
+  // NEW: registerOnLeaderboard now computes the user's volume via Alchemy (existing function)
+  // then calls contract.register(volume) with the signed wallet (msg.sender enforced on-chain)
+  async function registerOnLeaderboard() {
+    if (!account || !window.ethereum) {
+      alert("Connect your wallet first!");
+      return;
+    }
+
+    setRegistering(true);
+    try {
+      // compute user's volume locally (uses your existing Alchemy code)
+      const volume = await getWalletVolume(account);
+      // use injected signer for writing on-chain
+      const provider = new ethers.BrowserProvider(window.ethereum);
+      const signer = await provider.getSigner();
+      const contract = new ethers.Contract(CONTRACT_ADDRESS, abi, signer);
+
+      // pass volume as integer (uint256)
+      // convert to BigInt to be safe for ethers v6
+      const volBigInt = BigInt(Math.floor(volume || 0));
+      const tx = await contract.register(volBigInt);
+      await tx.wait();
+
+      // refresh local UI
+      await fetchLeaderboard();
+      alert("Registration successful!");
+    } catch (err) {
+      console.error("Register failed:", err);
+      alert("Failed to register. Ensure you confirm the transaction and you have testnet funds.");
+    } finally {
+      setRegistering(false);
     }
   }
 
@@ -245,12 +307,11 @@ export default function App() {
     <div className="min-h-screen bg-purple-900 flex items-center justify-center text-white p-6">
       <div className="flex flex-col items-center justify-center w-full max-w-3xl space-y-6">
 
-        {/* Break Monad Game at Top */}
+        {/* Break Monad Game */}
         <div className="bg-purple-800/40 border border-purple-400 rounded-2xl shadow-xl p-6 w-auto max-w-3xl flex flex-col items-center space-y-3">
           <h2 className="text-2xl font-semibold text-center">Play Break Monad Game</h2>
           <p className="text-center">
-            Click the button to send 5 transactions at once and increase your
-            Score
+            Click the button to send 5 transactions at once and increase your Score
           </p>
           <button
             onClick={playBreakMonad}
@@ -267,9 +328,7 @@ export default function App() {
         <div className="bg-purple-800/40 border border-purple-400 rounded-2xl shadow-xl p-6 w-auto max-w-3xl text-left">
           <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-end">
             <div className="flex-1">
-              <label className="block text-sm mb-1 opacity-90">
-                Connected wallet
-              </label>
+              <label className="block text-sm mb-1 opacity-90">Connected wallet</label>
               <div className="px-3 py-2 bg-purple-950/60 rounded-lg border border-purple-600 overflow-hidden text-ellipsis">
                 {account ? shortenAddress(account) : "Not connected"}
               </div>
@@ -285,13 +344,22 @@ export default function App() {
               </button>
 
               {account && (
-                <button
-                  onClick={refreshScore}
-                  className="px-4 py-2 rounded-lg bg-purple-500 hover:bg-purple-400 font-semibold disabled:opacity-50"
-                  disabled={submitting}
-                >
-                  Refresh Score
-                </button>
+                <>
+                  <button
+                    onClick={refreshScore}
+                    className="px-4 py-2 rounded-lg bg-purple-500 hover:bg-purple-400 font-semibold disabled:opacity-50"
+                    disabled={submitting}
+                  >
+                    Refresh Score
+                  </button>
+                  <button
+                    onClick={registerOnLeaderboard}
+                    className="px-4 py-2 rounded-lg bg-green-600 hover:bg-green-500 font-semibold disabled:opacity-50"
+                    disabled={registering}
+                  >
+                    {registering ? "Registering…" : "Register"}
+                  </button>
+                </>
               )}
             </div>
           </div>
@@ -301,7 +369,7 @@ export default function App() {
           </p>
         </div>
 
-        {/* Leaderboard Table */}
+        {/* Leaderboard */}
         <div className="bg-purple-800/40 border border-purple-400 rounded-2xl shadow-xl p-6 w-auto max-w-3xl">
           <div className="flex justify-center">
             <table className="w-auto">
@@ -316,9 +384,7 @@ export default function App() {
               <tbody className="bg-purple-800/40">
                 {loading ? (
                   <tr>
-                    <td className="px-6 py-3" colSpan={4}>
-                      Loading…
-                    </td>
+                    <td className="px-6 py-3" colSpan={4}>Loading…</td>
                   </tr>
                 ) : topRanked.length === 0 ? (
                   <tr>
@@ -328,10 +394,7 @@ export default function App() {
                   </tr>
                 ) : (
                   topRanked.map((p) => (
-                    <tr
-                      key={p.address}
-                      className="border-t border-purple-500/50"
-                    >
+                    <tr key={p.address} className="border-t border-purple-500/50">
                       <td className="px-6 py-3">{p.rank}</td>
                       <td className="px-6 py-3">{shortenAddress(p.address)}</td>
                       <td className="px-6 py-3">{p.volume}</td>
